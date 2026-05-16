@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MataJS</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2307090d'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-size='16' fill='%23f5a623'%3E%E2%97%88%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -55,6 +56,8 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .load-btn{background:var(--amber-lo);border:1px solid var(--amber-dim);color:var(--amber);font-family:var(--mono);font-size:9px;letter-spacing:.8px;text-transform:uppercase;padding:0 14px;height:36px;cursor:pointer;border-radius:2px;white-space:nowrap;transition:all .1s;flex-shrink:0}
 .load-btn:hover{background:rgba(245,166,35,.18)}
 .load-btn:disabled{opacity:.4;cursor:not-allowed}
+.url-error{display:none;margin-top:8px;padding:8px 10px;border:1px solid rgba(255,59,92,.35);background:rgba(255,59,92,.08);border-radius:2px;font-family:var(--mono);font-size:8.5px;color:var(--txt);line-height:1.6}
+.url-error.visible{display:block}
 
 /* upload zone */
 .upload-zone{border:1px dashed var(--wire2);border-radius:4px;padding:28px 20px;text-align:center;cursor:pointer;transition:all .15s;background:var(--bg3);position:relative}
@@ -235,7 +238,7 @@ input[type=range]{accent-color:var(--amber);width:100px}
     <div class="source-row">
       <div class="source-tabs">
         <div class="stab active" id="tab-upload" onclick="switchTab('upload')">↑ Upload</div>
-        <div class="stab" id="tab-url" onclick="switchTab('url')">🔗 URL / YouTube</div>
+        <div class="stab" id="tab-url" onclick="switchTab('url')">🔗 Video URL</div>
       </div>
     </div>
 
@@ -251,12 +254,12 @@ input[type=range]{accent-color:var(--amber);width:100px}
     <div id="url-row" style="display:none">
       <div class="url-input-wrap">
         <span class="pfx">URL</span>
-        <input type="text" id="url-input" placeholder="https://youtube.com/watch?v=… or direct .mp4 link">
+        <input type="text" id="url-input" placeholder="https://example.com/video.mp4 (direct file only)">
       </div>
+      <div id="url-error" class="url-error" role="alert"></div>
       <div style="margin-top:6px;font-family:var(--mono);font-size:8px;color:var(--txt3);line-height:1.8">
-        ⚠ YouTube links require a CORS proxy or a local server due to browser restrictions.<br>
-        Direct .mp4 URLs work if the server sends CORS headers.<br>
-        Easiest: download the MP4 first and use Upload tab.
+        YouTube and streaming sites cannot be loaded here (browser CORS).<br>
+        Use a direct link to an <strong>.mp4</strong> / <strong>.webm</strong> file, or download and use Upload.
       </div>
     </div>
     <div id="url-load-row" style="display:none;margin-top:-4px">
@@ -444,6 +447,7 @@ window.addEventListener('load', async () => {
 
   videoEl.addEventListener('loadedmetadata', onVideoLoaded);
   videoEl.addEventListener('ended', () => { stopDetection('ended'); });
+  videoEl.addEventListener('error', onVideoError);
 
   document.getElementById('file-input').addEventListener('change', onFileSelected);
 
@@ -564,18 +568,68 @@ function loadFile(file) {
   loadVideo(url, file.name);
 }
 
+function isYouTubeUrl(url) {
+  try {
+    const h = new URL(url).hostname.replace(/^www\./, '');
+    return h === 'youtube.com' || h === 'm.youtube.com' || h === 'youtu.be' || h.endsWith('.youtube.com');
+  } catch {
+    return false;
+  }
+}
+
+function isBlockedStreamUrl(url) {
+  if (isYouTubeUrl(url)) return true;
+  try {
+    const h = new URL(url).hostname;
+    return /vimeo\.com|twitch\.tv|dailymotion\.com|facebook\.com/i.test(h);
+  } catch {
+    return false;
+  }
+}
+
+function showUrlError(msg) {
+  const el = document.getElementById('url-error');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add('visible');
+}
+
+function clearUrlError() {
+  const el = document.getElementById('url-error');
+  if (!el) return;
+  el.textContent = '';
+  el.classList.remove('visible');
+}
+
 async function loadFromURL() {
   const url = document.getElementById('url-input').value.trim();
   if (!url) return;
+  clearUrlError();
+  if (isBlockedStreamUrl(url)) {
+    showUrlError('YouTube and similar sites cannot be played in the browser (CORS). Download the video as MP4 and use the Upload tab.');
+    return;
+  }
   loadVideo(url, url);
 }
 
 function loadVideo(src, label) {
   stopDetection();
+  clearUrlError();
   document.getElementById('placeholder').style.display = 'none';
   videoEl.style.display = 'block';
   videoEl.src = src;
   videoEl.load();
+}
+
+function onVideoError() {
+  const src = videoEl.currentSrc || videoEl.src;
+  if (!src || src.startsWith('blob:')) return;
+  showUrlError('This URL could not be loaded (often CORS or not a direct video file). Use Upload for local MP4 files.');
+  videoEl.removeAttribute('src');
+  videoEl.load();
+  videoEl.style.display = 'none';
+  document.getElementById('placeholder').style.display = '';
+  setStatus('ready', 'Video load failed');
 }
 
 function onVideoLoaded() {
