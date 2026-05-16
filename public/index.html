@@ -241,14 +241,14 @@ input[type=range]{accent-color:var(--amber);width:100px}
     <!-- Source selector -->
     <div class="source-row">
       <div class="source-tabs">
-        <div class="stab active" id="tab-upload" onclick="switchTab('upload')">↑ Upload</div>
+        <div class="stab" id="tab-upload" onclick="switchTab('upload')">↑ Upload</div>
         <div class="stab" id="tab-webcam" onclick="switchTab('webcam')">📷 Webcam</div>
-        <div class="stab" id="tab-url" onclick="switchTab('url')">🔗 Video URL</div>
+        <div class="stab active" id="tab-url" onclick="switchTab('url')">🔗 Video URL</div>
       </div>
     </div>
 
     <!-- Upload zone -->
-    <div class="upload-zone" id="upload-zone">
+    <div class="upload-zone" id="upload-zone" style="display:none">
       <input type="file" id="file-input" accept="video/mp4,video/*">
       <div class="upload-icon">📁</div>
       <div class="upload-label">Drop MP4 here or click to browse</div>
@@ -256,10 +256,10 @@ input[type=range]{accent-color:var(--amber);width:100px}
     </div>
 
     <!-- URL input (hidden by default) -->
-    <div id="url-row" style="display:none">
+    <div id="url-row">
       <div class="url-input-wrap">
         <span class="pfx">URL</span>
-        <input type="text" id="url-input" placeholder="https://example.com/video.mp4 (direct file only)">
+        <input type="text" id="url-input" value="https://static.videezy.com/system/resources/previews/000/004/354/original/78.mp4" placeholder="https://example.com/video.mp4 (direct file only)">
       </div>
       <div id="url-error" class="url-error" role="alert"></div>
       <div class="source-notice" role="note">
@@ -268,7 +268,7 @@ input[type=range]{accent-color:var(--amber);width:100px}
         Use <strong>Webcam</strong>, <strong>Upload</strong> (MP4), or a direct <strong>.mp4</strong> / <strong>.webm</strong> file URL with CORS.
       </div>
     </div>
-    <div id="url-load-row" style="display:none;margin-top:-4px">
+    <div id="url-load-row" style="margin-top:-4px">
       <button class="load-btn" id="url-load-btn" onclick="loadFromURL()">Load Video</button>
     </div>
 
@@ -289,7 +289,7 @@ input[type=range]{accent-color:var(--amber);width:100px}
     <div class="canvas-wrap" id="canvas-wrap">
       <div class="canvas-placeholder" id="placeholder">
         <span class="big">🎥</span>
-        Upload MP4, use Webcam, or a direct video URL<br>
+        Demo MP4 loads on start — or use Webcam / Upload<br>
         <span style="font-size:8px">Model loads automatically · runs entirely in your browser</span>
       </div>
       <video id="video-el" style="display:none" playsinline muted crossorigin="anonymous"></video>
@@ -454,6 +454,8 @@ let sessionClassCounts = {};
 
 // ── ONNX model URL (local server) ─────────────────────
 const MODEL_URL = '/models/yolov8n.onnx';
+const DEFAULT_VIDEO_URL =
+  'https://static.videezy.com/system/resources/previews/000/004/354/original/78.mp4';
 
 // ── Init ───────────────────────────────────────────────
 window.addEventListener('load', async () => {
@@ -469,6 +471,10 @@ window.addEventListener('load', async () => {
   videoEl.addEventListener('error', onVideoError);
 
   document.getElementById('file-input').addEventListener('change', onFileSelected);
+
+  document.getElementById('url-input').value = DEFAULT_VIDEO_URL;
+  switchTab('url');
+  loadVideo(DEFAULT_VIDEO_URL, 'Demo video');
 
   const uz = document.getElementById('upload-zone');
   uz.addEventListener('dragover', e => { e.preventDefault(); uz.classList.add('drag'); });
