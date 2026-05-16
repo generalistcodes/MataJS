@@ -57,6 +57,11 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .load-btn:disabled{opacity:.4;cursor:not-allowed}
 .url-error{display:none;margin-top:8px;padding:8px 10px;border:1px solid rgba(255,59,92,.35);background:rgba(255,59,92,.08);border-radius:2px;font-family:var(--mono);font-size:8.5px;color:var(--txt);line-height:1.6}
 .url-error.visible{display:block}
+.source-notice{margin-top:8px;padding:10px 12px;border:1px solid var(--amber-dim);background:var(--amber-lo);border-radius:2px;font-family:var(--mono);font-size:8.5px;color:var(--txt);line-height:1.65}
+.source-notice strong{color:var(--amber)}
+.source-notice code{font-size:7.5px;color:var(--txt2)}
+.webcam-row{display:flex;flex-direction:column;gap:8px}
+.webcam-actions{display:flex;gap:8px;flex-wrap:wrap}
 
 /* upload zone */
 .upload-zone{border:1px dashed var(--wire2);border-radius:4px;padding:28px 20px;text-align:center;cursor:pointer;transition:all .15s;background:var(--bg3);position:relative}
@@ -237,6 +242,7 @@ input[type=range]{accent-color:var(--amber);width:100px}
     <div class="source-row">
       <div class="source-tabs">
         <div class="stab active" id="tab-upload" onclick="switchTab('upload')">↑ Upload</div>
+        <div class="stab" id="tab-webcam" onclick="switchTab('webcam')">📷 Webcam</div>
         <div class="stab" id="tab-url" onclick="switchTab('url')">🔗 Video URL</div>
       </div>
     </div>
@@ -256,20 +262,34 @@ input[type=range]{accent-color:var(--amber);width:100px}
         <input type="text" id="url-input" placeholder="https://example.com/video.mp4 (direct file only)">
       </div>
       <div id="url-error" class="url-error" role="alert"></div>
-      <div style="margin-top:6px;font-family:var(--mono);font-size:8px;color:var(--txt3);line-height:1.8">
-        YouTube and streaming sites cannot be loaded here (browser CORS).<br>
-        Use a direct link to an <strong>.mp4</strong> / <strong>.webm</strong> file, or download and use Upload.
+      <div class="source-notice" role="note">
+        <strong>YouTube and embeds are not supported for detection.</strong><br>
+        A watch link, <code>youtube.com/embed/…</code>, or an <code>&lt;iframe&gt;</code> player only shows video — the browser blocks reading those pixels for AI (canvas security / CORS). MataJS cannot run YOLO on YouTube inside an iframe.<br>
+        Use <strong>Webcam</strong>, <strong>Upload</strong> (MP4), or a direct <strong>.mp4</strong> / <strong>.webm</strong> file URL with CORS.
       </div>
     </div>
     <div id="url-load-row" style="display:none;margin-top:-4px">
       <button class="load-btn" id="url-load-btn" onclick="loadFromURL()">Load Video</button>
     </div>
 
+
+    <!-- Webcam (hidden by default) -->
+    <div id="webcam-row" class="webcam-row" style="display:none">
+      <div class="source-notice" role="note">
+        Live camera frames are processed in your browser. Allow camera permission when prompted.
+      </div>
+      <div class="webcam-actions">
+        <button type="button" class="load-btn" id="webcam-start-btn" onclick="startWebcam()">Start webcam</button>
+        <button type="button" class="ctrl-btn" id="webcam-stop-btn" onclick="stopWebcam()" disabled>Stop webcam</button>
+      </div>
+      <div id="webcam-error" class="url-error" role="alert"></div>
+    </div>
+
     <!-- Video + canvas -->
     <div class="canvas-wrap" id="canvas-wrap">
       <div class="canvas-placeholder" id="placeholder">
         <span class="big">🎥</span>
-        Upload an MP4 or paste a video URL<br>
+        Upload MP4, use Webcam, or a direct video URL<br>
         <span style="font-size:8px">Model loads automatically · runs entirely in your browser</span>
       </div>
       <video id="video-el" style="display:none" playsinline muted crossorigin="anonymous"></video>
@@ -428,6 +448,7 @@ let activeClasses = new Set(COCO_CLASSES);
 let lastDetections = [];
 /** Count of boxes on the last processed frame (for “final frame” hint after stop). */
 let lastFrameDetCount = 0;
+let webcamStream = null;
 /** Cumulative counts per COCO class index while current run is active (increments each processed frame). */
 let sessionClassCounts = {};
 
@@ -547,13 +568,83 @@ function setModelProg(v) {
 
 // ── Source tabs ────────────────────────────────────────
 function switchTab(tab) {
-  const isUpload = tab === 'upload';
-  document.getElementById('tab-upload').classList.toggle('active', isUpload);
-  document.getElementById('tab-url').classList.toggle('active', !isUpload);
-  document.getElementById('upload-zone').style.display = isUpload ? '' : 'none';
-  document.getElementById('url-row').style.display     = isUpload ? 'none' : '';
-  document.getElementById('url-load-row').style.display = isUpload ? 'none' : '';
-  if (!isUpload) document.getElementById('url-load-row').style.display = '';
+  if (tab !== 'webcam' && webcamStream) stopWebcam();
+  ['upload', 'webcam', 'url'].forEach((name) => {
+    const el = document.getElementById('tab-' + name);
+    if (el) el.classList.toggle('active', tab === name);
+  });
+  document.getElementById('upload-zone').style.display = tab === 'upload' ? '' : 'none';
+  document.getElementById('webcam-row').style.display = tab === 'webcam' ? '' : 'none';
+  document.getElementById('url-row').style.display = tab === 'url' ? '' : 'none';
+  document.getElementById('url-load-row').style.display = tab === 'url' ? '' : 'none';
+}
+
+function releaseMediaSource() {
+  stopDetection();
+  if (webcamStream) {
+    webcamStream.getTracks().forEach((tr) => tr.stop());
+    webcamStream = null;
+  }
+  videoEl.pause();
+  videoEl.srcObject = null;
+  const prev = videoEl.src;
+  if (prev && prev.startsWith('blob:')) {
+    try { URL.revokeObjectURL(prev); } catch (_) {}
+  }
+  videoEl.removeAttribute('src');
+  videoEl.load();
+  document.getElementById('webcam-stop-btn').disabled = true;
+}
+
+function showWebcamError(msg) {
+  const el = document.getElementById('webcam-error');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add('visible');
+}
+
+function clearWebcamError() {
+  const el = document.getElementById('webcam-error');
+  if (!el) return;
+  el.textContent = '';
+  el.classList.remove('visible');
+}
+
+async function startWebcam() {
+  clearWebcamError();
+  if (!navigator.mediaDevices?.getUserMedia) {
+    showWebcamError('Camera API not available. Use HTTPS or localhost, or try the Upload tab.');
+    return;
+  }
+  try {
+    releaseMediaSource();
+    webcamStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    });
+    videoEl.muted = true;
+    videoEl.playsInline = true;
+    videoEl.srcObject = webcamStream;
+    document.getElementById('placeholder').style.display = 'none';
+    videoEl.style.display = 'block';
+    await videoEl.play();
+    document.getElementById('webcam-stop-btn').disabled = false;
+    onVideoLoaded();
+    setStatus('ready', 'Webcam active — press Start');
+  } catch (err) {
+    console.error(err);
+    showWebcamError(err.name === 'NotAllowedError'
+      ? 'Camera permission denied. Allow camera access in browser settings.'
+      : 'Could not open webcam: ' + (err.message || err.name));
+  }
+}
+
+function stopWebcam() {
+  releaseMediaSource();
+  clearWebcamError();
+  videoEl.style.display = 'none';
+  document.getElementById('placeholder').style.display = '';
+  if (session) setStatus('ready', 'Webcam stopped');
 }
 
 // ── File load ──────────────────────────────────────────
@@ -605,7 +696,7 @@ async function loadFromURL() {
   if (!url) return;
   clearUrlError();
   if (isBlockedStreamUrl(url)) {
-    showUrlError('YouTube and similar sites cannot be played in the browser (CORS). Download the video as MP4 and use the Upload tab.');
+    showUrlError('YouTube / embed / iframe URLs cannot be used for detection. Use Webcam, Upload (MP4), or a direct .mp4 file URL.');
     return;
   }
   loadVideo(url, url);
@@ -613,11 +704,12 @@ async function loadFromURL() {
 
 function loadVideo(src, label) {
   if (typeof src === 'string' && !src.startsWith('blob:') && isBlockedStreamUrl(src)) {
-    showUrlError('YouTube and similar sites cannot be played in the browser (CORS). Download the video as MP4 and use the Upload tab.');
+    showUrlError('YouTube / embed / iframe links cannot be used for detection. Use Webcam, Upload (MP4), or a direct .mp4 URL.');
     return;
   }
-  stopDetection();
+  releaseMediaSource();
   clearUrlError();
+  clearWebcamError();
   document.getElementById('placeholder').style.display = 'none';
   videoEl.style.display = 'block';
   videoEl.src = src;
@@ -625,6 +717,7 @@ function loadVideo(src, label) {
 }
 
 function onVideoError() {
+  if (videoEl.srcObject) return;
   const src = videoEl.currentSrc || videoEl.src;
   if (!src || src.startsWith('blob:')) return;
   showUrlError('This URL could not be loaded (often CORS or not a direct video file). Use Upload for local MP4 files.');
