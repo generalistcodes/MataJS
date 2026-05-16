@@ -1,6 +1,14 @@
 {
-  "buildCommand": "npm install onnxruntime-web@1.18.0 --no-save && node scripts/copy-vendor.js",
-  "outputDirectory": "public",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "framework": null,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "public" }
+    }
+  ],
   "rewrites": [
     { "source": "/favicon.ico", "destination": "/favicon.svg" }
   ],
