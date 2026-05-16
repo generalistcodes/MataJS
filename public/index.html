@@ -4,8 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MataJS</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2307090d'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-size='16' fill='%23f5a623'%3E%E2%97%88%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
 :root{
   --bg:#07090d;--bg2:#0d1117;--bg3:#111820;--bg4:#18222e;
@@ -14,7 +13,7 @@
   --green:#00e676;--green-lo:rgba(0,230,118,.08);
   --red:#ff3b5c;--blue:#29b6f6;
   --txt:#c4d4e4;--txt2:#6a8098;--txt3:#2a3a4a;
-  --mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif;
+  --mono:ui-monospace,'Cascadia Code','Segoe UI Mono',monospace;--sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{height:100%}
@@ -396,8 +395,7 @@ input[type=range]{accent-color:var(--amber);width:100px}
   Built by <a href="https://kimmonzon.com" target="_blank" rel="noopener noreferrer">kimmonzon.com</a>
 </footer>
 
-<!-- onnxruntime-web from CDN -->
-<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js"></script>
+<script src="/vendor/ort.min.js"></script>
 
 <script>
 // ── COCO 80 classes ────────────────────────────────────
@@ -467,6 +465,7 @@ async function loadModel() {
   showLoadingOverlay('Loading YOLO model…', 'Loading ~6MB ONNX from this server');
 
   try {
+    ort.env.wasm.wasmPaths = '/vendor/';
     ort.env.wasm.numThreads = navigator.hardwareConcurrency || 4;
     ort.env.wasm.simd = true;
 
@@ -613,6 +612,10 @@ async function loadFromURL() {
 }
 
 function loadVideo(src, label) {
+  if (typeof src === 'string' && !src.startsWith('blob:') && isBlockedStreamUrl(src)) {
+    showUrlError('YouTube and similar sites cannot be played in the browser (CORS). Download the video as MP4 and use the Upload tab.');
+    return;
+  }
   stopDetection();
   clearUrlError();
   document.getElementById('placeholder').style.display = 'none';
@@ -874,7 +877,7 @@ function drawDetections(dets) {
 
     // Label background
     const label = `${d.label} ${Math.round(d.conf * 100)}%`;
-    detCtx.font = 'bold 10px IBM Plex Mono';
+    detCtx.font = 'bold 10px var(--mono), monospace';
     const tw = detCtx.measureText(label).width + 8;
     const lh = 15;
     const ly = y1 > lh + 2 ? y1 - lh - 2 : y1 + 2;

@@ -3,10 +3,12 @@
   "version": "1.0.0",
   "scripts": {
     "setup": "node scripts/setup.js",
+    "vendor": "npm install onnxruntime-web@1.18.0 --no-save && node scripts/copy-vendor.js",
     "start": "node server.js",
-    "dev": "node scripts/setup.js && node server.js"
+    "dev": "node scripts/setup.js && npm run vendor && node server.js"
   },
   "dependencies": {
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "onnxruntime-web": "1.18.0"
   }
 }
